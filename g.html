@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>إدارة الكتب الاحترافية - كروت</title>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+:root {
+  --bg-color:#f5f5f5;
+  --card-bg:#fff;
+  --text-color:#000;
+  --header-bg:#007bff;
+  --btn-bg:#28a745;
+  --btn-delete:#dc3545;
+}
+body.dark {
+  --bg-color:#121212;
+  --card-bg:#1e1e1e;
+  --text-color:#fff;
+  --header-bg:#1a73e8;
+  --btn-bg:#28a745;
+  --btn-delete:#ff4d4d;
+}
+body {
+  font-family: Arial, sans-serif;
+  background:var(--bg-color);
+  color:var(--text-color);
+  margin:0;
+  padding:0;
+}
+.container {
+  max-width: 1200px;
+  margin:auto;
+  padding:20px;
+}
+header {
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-bottom:20px;
+  align-items:center;
+}
+header input, header select, header button {
+  padding:10px;
+  font-size:16px;
+}
+header h1 {
+  flex:1 1 100%;
+}
+.toggle-theme {
+  background:#ffc107;
+  border:none;
+  padding:10px 15px;
+  border-radius:5px;
+  cursor:pointer;
+}
+.cards-container {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(250px,1fr));
+  gap:20px;
+}
+.card {
+  background:var(--card-bg);
+  padding:15px;
+  border-radius:15px;
+  box-shadow:0 4px 10px rgba(0,0,0,0.1);
+  transition:transform 0.3s;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+.card img {
+  width:100%;
+  height:200px;
+  object-fit:cover;
+  border-radius:10px;
+  margin-bottom:10px;
+}
+.card h3, .card p {
+  margin:5px 0;
+  text-align:center;
+}
+.card button {
+  padding:5px 10px;
+  margin:5px;
+  border:none;
+  color:#fff;
+  border-radius:5px;
+  cursor:pointer;
+}
+.card button.edit {background:var(--btn-bg);}
+.card button.delete {background:var(--btn-delete);}
+canvas {background:var(--card-bg); border-radius:10px; padding:10px; margin-bottom:20px;}
+.modal {
+  display:none;
+  position:fixed;
+  top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,0,0.5);
+  justify-content:center;
+  align-items:center;
+}
+.modal-content {
+  background:var(--card-bg);
+  padding:20px;
+  border-radius:10px;
+  width:300px;
+  display:flex;
+  flex-direction:column;
+}
+.modal-content input, .modal-content select {
+  margin-bottom:10px;
+  padding:8px;
+}
+.modal-content button {
+  margin-top:5px;
+  padding:10px;
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>إدارة الكتب الاحترافية</h1>
+    <input type="text" id="search" placeholder="ابحث عن كتاب...">
+    <select id="filter">
+      <option value="all">الكل</option>
+      <option value="روايات">روايات</option>
+      <option value="علوم">علوم</option>
+      <option value="تاريخ">تاريخ</option>
+      <option value="تكنولوجيا">تكنولوجيا</option>
+    </select>
+    <button id="addBookBtn">إضافة كتاب جديد</button>
+    <button class="toggle-theme" id="themeBtn">الوضع الليلي/النهاري</button>
+  </header>
+
+  <main>
+    <div class="cards-container" id="cardsContainer"></div>
+    <canvas id="salesChart" height="200"></canvas>
+    <canvas id="categoryChart" height="200"></canvas>
+  </main>
+</div>
+
+<!-- Modal لإضافة/تعديل الكتب -->
+<div class="modal" id="bookModal">
+  <div class="modal-content">
+    <input type="text" id="bookTitle" placeholder="العنوان">
+    <input type="text" id="bookAuthor" placeholder="المؤلف">
+    <input type="text" id="bookImage" placeholder="رابط صورة">
+    <select id="bookCategory">
+      <option value="روايات">روايات</option>
+      <option value="علوم">علوم</option>
+      <option value="تاريخ">تاريخ</option>
+      <option value="تكنولوجيا">تكنولوجيا</option>
+    </select>
+    <input type="number" id="bookPrice" placeholder="السعر">
+    <input type="number" id="bookSales" placeholder="عدد المبيعات">
+    <input type="number" id="bookMonth" placeholder="الشهر (1-12)">
+    <div style="display:flex; justify-content:space-between;">
+      <button id="saveBookBtn">حفظ</button>
+      <button id="cancelBtn" style="background:#dc3545;">إلغاء</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===================== البيانات =====================
+let books = JSON.parse(localStorage.getItem('books')) || [];
+let editingIndex = null;
+
+// ===================== الوضع الليلي =====================
+const themeBtn = document.getElementById("themeBtn");
+themeBtn.onclick = () => document.body.classList.toggle("dark");
+
+// ===================== حفظ البيانات =====================
+function saveBooks() {
+  localStorage.setItem('books', JSON.stringify(books));
+}
+
+// ===================== عرض الكتب =====================
+function renderBooks(filteredBooks = books) {
+  const container = document.getElementById("cardsContainer");
+  container.innerHTML = "";
+  filteredBooks.forEach((book,i)=>{
+    const card = document.createElement("div");
+    card.classList.add("card");
+    card.innerHTML = `
+      <img src="${book.image||'https://via.placeholder.com/200x200'}" alt="${book.title}">
+      <h3>${book.title}</h3>
+      <p><strong>المؤلف:</strong> ${book.author}</p>
+      <p><strong>التصنيف:</strong> ${book.category}</p>
+      <p><strong>السعر:</strong> ${book.price}</p>
+      <p><strong>المبيعات:</strong> ${book.sales}</p>
+      <p><strong>الشهر:</strong> ${book.month}</p>
+      <div>
+        <button class="edit" onclick="editBookPrompt(${i})">تعديل</button>
+        <button class="delete" onclick="deleteBook(${i})">حذف</button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+  gsap.from(".card", {opacity:0, y:-20, duration:0.5, stagger:0.1});
+  updateCharts();
+}
+
+// ===================== CRUD =====================
+function addBook(book) {
+  books.push(book);
+  saveBooks();
+  renderBooks();
+}
+function editBook(index, updatedBook) {
+  books[index] = updatedBook;
+  saveBooks();
+  renderBooks();
+}
+function deleteBook(index) {
+  books.splice(index,1);
+  saveBooks();
+  renderBooks();
+}
+
+// ===================== Modal =====================
+const modal = document.getElementById("bookModal");
+const saveBtn = document.getElementById("saveBookBtn");
+const cancelBtn = document.getElementById("cancelBtn");
+
+document.getElementById("addBookBtn").onclick = () => {
+  editingIndex = null;
+  modal.style.display = "flex";
+  document.getElementById("bookTitle").value="";
+  document.getElementById("bookAuthor").value="";
+  document.getElementById("bookImage").value="";
+  document.getElementById("bookCategory").value="روايات";
+  document.getElementById("bookPrice").value="";
+  document.getElementById("bookSales").value="";
+  document.getElementById("bookMonth").value="";
+}
+cancelBtn.onclick = ()=> modal.style.display="none";
+
+saveBtn.onclick = ()=>{
+  const book={
+    title:document.getElementById("bookTitle").value,
+    author:document.getElementById("bookAuthor").value,
+    image:document.getElementById("bookImage").value,
+    category:document.getElementById("bookCategory").value,
+    price:Number(document.getElementById("bookPrice").value),
+    sales:Number(document.getElementById("bookSales").value),
+    month:Number(document.getElementById("bookMonth").value),
+  };
+  if(editingIndex===null) addBook(book);
+  else editBook(editingIndex,book);
+  modal.style.display="none";
+}
+
+// ===================== تعديل =====================
+function editBookPrompt(index){
+  editingIndex=index;
+  const book=books[index];
+  modal.style.display="flex";
+  document.getElementById("bookTitle").value=book.title;
+  document.getElementById("bookAuthor").value=book.author;
+  document.getElementById("bookImage").value=book.image;
+  document.getElementById("bookCategory").value=book.category;
+  document.getElementById("bookPrice").value=book.price;
+  document.getElementById("bookSales").value=book.sales;
+  document.getElementById("bookMonth").value=book.month;
+}
+
+// ===================== البحث والفلترة =====================
+document.getElementById("search").addEventListener("input", e=>{
+  const val=e.target.value.toLowerCase();
+  renderBooks(books.filter(b=>b.title.toLowerCase().includes(val) || b.author.toLowerCase().includes(val)));
+});
+document.getElementById("filter").addEventListener("change", e=>{
+  const val=e.target.value;
+  renderBooks(val==="all"? books : books.filter(b=>b.category===val));
+});
+
+// ===================== الشارتات =====================
+let salesChart, categoryChart;
+function updateCharts(){
+  const months=Array(12).fill(0);
+  const categories={};
+  books.forEach(b=>{
+    if(b.month>=1 && b.month<=12) months[b.month-1]+=b.sales;
+    categories[b.category]=(categories[b.category]||0)+b.sales;
+  });
+  if(salesChart) salesChart.destroy();
+  salesChart=new Chart(document.getElementById("salesChart"),{
+    type:'bar',
+    data:{labels:["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"],
+          datasets:[{label:"المبيعات", data:months, backgroundColor:"#007bff"}]}
+  });
+  if(categoryChart) categoryChart.destroy();
+  categoryChart=new Chart(document.getElementById("categoryChart"),{
+    type:'pie',
+    data:{labels:Object.keys(categories), datasets:[{data:Object.values(categories), backgroundColor:["#28a745","#dc3545","#ffc107","#17a2b8"]}]}
+  });
+}
+
+// ===================== Hover Animation =====================
+document.addEventListener("mouseover", e=>{
+  if(e.target.closest(".card")){
+    gsap.to(e.target.closest(".card"), {scale:1.03, duration:0.2});
+  }
+});
+document.addEventListener("mouseout", e=>{
+  if(e.target.closest(".card")){
+    gsap.to(e.target.closest(".card"), {scale:1, duration:0.2});
+  }
+});
+
+// ===================== البداية =====================
+renderBooks();
+</script>
+</body>
+</html>
